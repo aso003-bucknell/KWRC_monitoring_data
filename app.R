@@ -214,6 +214,72 @@ ui <- page_navbar(
   theme        = kwrc_theme,
   window_title = "KWRC Temperature Explorer",
   
+  # Mobile viewport meta tag
+  header = tags$head(
+    tags$meta(name = "viewport",
+              content = "width=device-width, initial-scale=1, shrink-to-fit=no"),
+    tags$style(HTML("
+      /* ── Mobile-first overrides ── */
+
+      /* Plots: use vh on desktop, fixed px floor on mobile so they're usable */
+      .ts-plot-wrap  { height: calc(100vh - 210px); min-height: 320px; }
+      .sp-plot-wrap  { height: calc(100vh - 210px); min-height: 320px; }
+      .cmp-plot-wrap { height: calc(100vh - 175px); min-height: 300px; }
+
+      /* Mini-maps: smaller on mobile */
+      .mini-map-wrap { height: 185px; }
+
+      /* Overview map: shorter on mobile */
+      .overview-map-wrap { height: 420px; }
+
+      /* Compare Sites: full-width stack on mobile, 3-col on desktop */
+      .cmp-layout {
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+        padding: .75rem;
+        min-height: calc(100vh - 75px);
+      }
+      .cmp-controls { order: 2; }
+      .cmp-main     { order: 1; }
+      .cmp-sites    { order: 3; }
+
+      @media (min-width: 768px) {
+        .cmp-layout {
+          flex-direction: row;
+          align-items: stretch;
+        }
+        .cmp-controls { order: 1; flex: 0 0 22%; }
+        .cmp-main     { order: 2; flex: 1 1 auto; }
+        .cmp-sites    { order: 3; flex: 0 0 22%; }
+
+        /* Restore full-height plots on desktop */
+        .ts-plot-wrap  { height: calc(100vh - 210px); }
+        .sp-plot-wrap  { height: calc(100vh - 210px); }
+        .cmp-plot-wrap { height: calc(100vh - 175px); }
+        .overview-map-wrap { height: 420px; }
+      }
+
+      /* Slider touch targets */
+      .irs--shiny .irs-handle { width: 28px; height: 28px; top: 21px; }
+
+      /* Download tab: single column on mobile */
+      .dl-cols { display: flex; flex-direction: column; gap: 1rem; }
+      @media (min-width: 768px) {
+        .dl-cols { flex-direction: row; }
+        .dl-cols > div:first-child { flex: 0 0 58%; }
+        .dl-cols > div:last-child  { flex: 1 1 auto; }
+      }
+
+      /* Value boxes: wrap gracefully */
+      .vb-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; }
+      .vb-row > * { flex: 1 1 200px; min-width: 0; }
+
+      /* Navbar title: truncate gracefully */
+      .navbar-brand span { font-size: clamp(.8rem, 2.5vw, 1.05rem); }
+    "))
+  ),
+  
   title = tags$span(
     style = "font-family:Georgia,serif; font-size:1.05rem; letter-spacing:.01em;",
     "KWRC Water Temperature Explorer"
@@ -240,8 +306,9 @@ ui <- page_navbar(
         )
       ),
       
-      layout_columns(
-        col_widths = c(4, 4, 4),
+      # Value boxes — use custom flex wrapper so they stack on mobile
+      div(
+        class = "vb-row",
         value_box(
           title    = "Temperature Monitoring Stations",
           value    = n_sites,
@@ -263,20 +330,27 @@ ui <- page_navbar(
       ),
       
       layout_columns(
-        col_widths = c(7, 5),
+        col_widths = c(12, 12),          # stack on mobile; override below
         style = "margin-top:1rem;",
         
         card(
           card_header("Monitoring Network"),
-          plotlyOutput("overview_map", height = "420px")
+          div(class = "overview-map-wrap",
+              plotlyOutput("overview_map", height = "100%"))
         ),
         
         card(
           card_header("Station Summary"),
           style = "overflow-y:auto;",
-          DTOutput("overview_table", height = "390px")
+          DTOutput("overview_table")
         )
-      )
+      ) |>
+        # Apply 7/5 split only on md+ via inline style override
+        tagAppendAttributes(
+          style = "@media (min-width:768px){
+            grid-template-columns: 7fr 5fr !important;
+          }"
+        )
     )
   ),
   
@@ -291,7 +365,8 @@ ui <- page_navbar(
         
         sidebar_head("Station"),
         selectInput("ts_site", NULL, choices = SITE_CHOICES, selected = "SPA"),
-        plotlyOutput("ts_minimap", height = "185px"),
+        div(class = "mini-map-wrap",
+            plotlyOutput("ts_minimap", height = "100%")),
         
         hr(style = "margin:.6rem 0;"),
         sidebar_head("Year Range"),
@@ -313,7 +388,8 @@ ui <- page_navbar(
       card(
         full_screen = TRUE,
         card_header(textOutput("ts_title", inline = TRUE)),
-        plotlyOutput("ts_plot", height = "calc(100vh - 210px)")
+        div(class = "ts-plot-wrap",
+            plotlyOutput("ts_plot", height = "100%"))
       )
     )
   ),
@@ -329,7 +405,8 @@ ui <- page_navbar(
         
         sidebar_head("Station"),
         selectInput("sp_site", NULL, choices = SITE_CHOICES, selected = "SPA"),
-        plotlyOutput("sp_minimap", height = "185px"),
+        div(class = "mini-map-wrap",
+            plotlyOutput("sp_minimap", height = "100%")),
         
         hr(style = "margin:.6rem 0;"),
         sidebar_head("Year Range"),
@@ -360,7 +437,8 @@ ui <- page_navbar(
       card(
         full_screen = TRUE,
         card_header(textOutput("sp_title", inline = TRUE)),
-        plotlyOutput("sp_plot", height = "calc(100vh - 210px)")
+        div(class = "sp-plot-wrap",
+            plotlyOutput("sp_plot", height = "100%"))
       )
     )
   ),
@@ -370,51 +448,65 @@ ui <- page_navbar(
     "Compare Sites",
     icon = icon("code-compare"),
     
-    layout_columns(
-      col_widths = c(3, 6, 3),
-      style = "padding:.75rem; height:calc(100vh - 75px); align-items:stretch;",
+    div(
+      class = "cmp-layout",
       
-      card(
-        style = paste0("background:", SB_BG, "; overflow-y:auto;"),
-        card_body(
-          padding = "0.75rem",
-          
-          sidebar_head("Station Location"),
-          plotlyOutput("cmp_minimap", height = "185px"),
-          
-          hr(style = "margin:.6rem 0;"),
-          sidebar_head("Year Range"),
-          sliderInput("cmp_years", NULL,
-                      min = year_min, max = year_max,
-                      value = c(2010, year_max), step = 1, sep = ""),
-          
-          hr(style = "margin:.6rem 0;"),
-          sidebar_head("Metric"),
-          radioButtons("cmp_metric", NULL,
-                       choices  = c("Daily mean" = "daily_mean_c",
-                                    "Daily maximum" = "daily_max_c"),
-                       selected = "daily_mean_c")
+      # Left controls
+      div(
+        class = "cmp-controls",
+        card(
+          style = paste0("background:", SB_BG, "; overflow-y:auto; height:100%;"),
+          card_body(
+            padding = "0.75rem",
+            
+            sidebar_head("Station Location"),
+            div(class = "mini-map-wrap",
+                plotlyOutput("cmp_minimap", height = "100%")),
+            
+            hr(style = "margin:.6rem 0;"),
+            sidebar_head("Year Range"),
+            sliderInput("cmp_years", NULL,
+                        min = year_min, max = year_max,
+                        value = c(2010, year_max), step = 1, sep = ""),
+            
+            hr(style = "margin:.6rem 0;"),
+            sidebar_head("Metric"),
+            radioButtons("cmp_metric", NULL,
+                         choices  = c("Daily mean" = "daily_mean_c",
+                                      "Daily maximum" = "daily_max_c"),
+                         selected = "daily_mean_c")
+          )
         )
       ),
       
-      card(
-        full_screen = TRUE,
-        card_header("Monthly Median Temperature by Station"),
-        card_body(
-          padding = 0,
-          plotlyOutput("cmp_plot", height = "calc(100vh - 175px)")
+      # Main plot
+      div(
+        class = "cmp-main",
+        card(
+          full_screen = TRUE,
+          style = "height:100%;",
+          card_header("Monthly Median Temperature by Station"),
+          card_body(
+            padding = 0,
+            div(class = "cmp-plot-wrap",
+                plotlyOutput("cmp_plot", height = "100%"))
+          )
         )
       ),
       
-      card(
-        style = paste0("background:", SB_BG, "; overflow-y:auto;"),
-        card_body(
-          padding = "0.75rem",
-          sidebar_head("Select Stations (up to 8)"),
-          checkboxGroupInput(
-            "cmp_sites", NULL,
-            choices  = CMP_CHOICES,
-            selected = c("SPA", "SPM", "SLU", "CEL")
+      # Site checkboxes
+      div(
+        class = "cmp-sites",
+        card(
+          style = paste0("background:", SB_BG, "; overflow-y:auto; height:100%;"),
+          card_body(
+            padding = "0.75rem",
+            sidebar_head("Select Stations (up to 8)"),
+            checkboxGroupInput(
+              "cmp_sites", NULL,
+              choices  = CMP_CHOICES,
+              selected = c("SPA", "SPM", "SLU", "CEL")
+            )
           )
         )
       )
@@ -431,7 +523,6 @@ ui <- page_navbar(
       
       div(
         style = "margin-bottom:1.25rem;",
-        
         h2(
           "Download Temperature Data",
           style = paste(
@@ -440,7 +531,6 @@ ui <- page_navbar(
             "margin-bottom:.25rem;"
           )
         ),
-        
         p(
           paste(
             "Choose the stations, years, and quality-control option below.",
@@ -452,11 +542,10 @@ ui <- page_navbar(
       
       card(
         card_header("Choose Data"),
-        
         card_body(
-          layout_columns(
-            col_widths = c(7, 5),
-            
+          # Custom flex layout replacing layout_columns for mobile
+          div(
+            class = "dl-cols",
             div(
               radioButtons(
                 "dl_scope",
@@ -470,7 +559,6 @@ ui <- page_navbar(
               
               conditionalPanel(
                 condition = "input.dl_scope == 'selected'",
-                
                 selectizeInput(
                   "dl_sites",
                   "Select stations",
@@ -482,20 +570,14 @@ ui <- page_navbar(
                     plugins = list("remove_button")
                   )
                 ),
-                
-                helpText(
-                  "You may select one or more surface-water or spring stations."
-                )
+                helpText("You may select one or more surface-water or spring stations.")
               ),
               
               sliderInput(
-                "dl_years",
-                "Year range",
-                min = year_min,
-                max = year_max,
+                "dl_years", "Year range",
+                min = year_min, max = year_max,
                 value = c(year_min, year_max),
-                step = 1,
-                sep = ""
+                step = 1, sep = ""
               ),
               
               checkboxInput(
@@ -513,11 +595,7 @@ ui <- page_navbar(
             ),
             
             div(
-              h5(
-                "Your Download",
-                style = "color:#1a3a5c; margin-top:.25rem;"
-              ),
-              
+              h5("Your Download", style = "color:#1a3a5c; margin-top:.25rem;"),
               div(
                 style = paste(
                   "background:#f4f8fb;",
@@ -528,13 +606,10 @@ ui <- page_navbar(
                 ),
                 uiOutput("dl_summary")
               ),
-              
               uiOutput("dl_download_ui"),
-              
               actionButton(
-                "dl_reset",
-                "Reset Filters",
-                icon = icon("rotate-left"),
+                "dl_reset", "Reset Filters",
+                icon  = icon("rotate-left"),
                 class = "btn-outline-secondary btn-sm w-100",
                 style = "margin-top:.6rem;"
               )
@@ -546,7 +621,6 @@ ui <- page_navbar(
       card(
         style = "margin-top:1rem;",
         card_header("Columns Included"),
-        
         card_body(
           tags$p(tags$strong("Station information: "),
                  "site ID, station name, site type, and watershed"),
@@ -782,7 +856,8 @@ server <- function(input, output, session) {
       font          = list(family = "system-ui, sans-serif", size = 16,
                            color = "#1a2633"),
       margin        = list(l = 55, r = 20, t = 15, b = 55)
-    )
+    ) |>
+      config(displayModeBar = FALSE)
   })
   
   output$ts_dl <- downloadHandler(
@@ -822,7 +897,7 @@ server <- function(input, output, session) {
       x             = ~month_label,
       y             = ~daily_mean_c,
       type          = "box",
-      name          = "Daily mean temp",
+      name          = "Monthly Median Temperature",
       marker        = list(color = "#1d7fb3", size = 3, opacity = 0.35),
       line          = list(color = "#1a3a5c"),
       fillcolor     = "rgba(29, 127, 179, 0.22)",
@@ -836,7 +911,6 @@ server <- function(input, output, session) {
     ref_shapes      <- list()
     ref_annotations <- list()
     
-    # Groundwater reference — band BELOW 10.5°C (anomalously cold zone)
     if (isTRUE(input$sp_groundwater)) {
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type      = "rect", xref = "paper", x0 = 0, x1 = 1,
@@ -859,7 +933,6 @@ server <- function(input, output, session) {
       )
     }
     
-    # Cold-water fishery threshold — band above 17°C
     if (isTRUE(input$sp_coldwater)) {
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type      = "rect", xref = "paper", x0 = 0, x1 = 1,
@@ -882,7 +955,6 @@ server <- function(input, output, session) {
       )
     }
     
-    # PA trout stress threshold — band above 20°C
     if (isTRUE(input$sp_trout)) {
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type      = "rect", xref = "paper", x0 = 0, x1 = 1,
@@ -929,7 +1001,8 @@ server <- function(input, output, session) {
       font          = list(family = "system-ui, sans-serif", size = 16,
                            color = "#1a2633"),
       margin        = list(l = 55, r = 20, t = 15, b = 55)
-    )
+    ) |>
+      config(displayModeBar = FALSE)
   })
   
   # ── Compare Sites ─────────────────────────────────────────────────────────
@@ -1003,7 +1076,8 @@ server <- function(input, output, session) {
       font          = list(family = "system-ui, sans-serif", size = 16,
                            color = "#1a2633"),
       margin        = list(l = 55, r = 20, t = 15, b = 55)
-    )
+    ) |>
+      config(displayModeBar = FALSE)
   })
   
   # ── Download ───────────────────────────────────────────────────────────────
