@@ -20,6 +20,11 @@ library(DT)
 site_meta  <- readRDS("site_meta.rds")
 temp_data  <- readRDS("temp_data.rds")
 
+site_meta  <- readRDS("site_meta.rds") |> filter(site_id != "GGU")
+temp_data  <- readRDS("temp_data.rds") |> filter(site_id != "GGU")
+
+n_sites <- site_meta |> filter(site_type == "Surface") |> nrow()
+
 # Load watershed boundary coordinates safely — app still works if files missing
 HAS_WATERSHEDS <- tryCatch({
   surface_ws_coords     <<- read.csv("www/surface_ws_coords.csv",
@@ -133,6 +138,13 @@ n_since_1999   <- temp_data |>
   filter(first_yr <= 1999) |>
   nrow()
 
+# Global y-axis range — fixed across all plots so sites are visually comparable.
+# Padded by 1°C on each end so data doesn't kiss the axis edges.
+TEMP_YMIN <- floor(min(temp_data$daily_mean_c, temp_data$daily_max_c,
+                       na.rm = TRUE)) - 1
+TEMP_YMAX <- ceiling(max(temp_data$daily_mean_c, temp_data$daily_max_c,
+                         na.rm = TRUE)) + 1
+
 # Site choice lists grouped by type
 make_site_choices <- function() {
   surface <- site_meta |>
@@ -163,19 +175,6 @@ ALL_SITE_IDS <- unlist(SITE_CHOICES, use.names = FALSE)
 
 CMP_CHOICES        <- unlist(SITE_CHOICES)
 names(CMP_CHOICES) <- sub("^.*\\.", "", names(CMP_CHOICES))
-
-WS_COLORS <- c(
-  "Spring Creek"       = "#1d7fb3",
-  "Slab Cabin Run"     = "#2a9d8f",
-  "Buffalo Run"        = "#c98b2d",
-  "Logan Branch"       = "#e07040",
-  "Cedar Run"          = "#d64e3c",
-  "Thompson Run"       = "#6a4c93",
-  "Walnut Springs Run" = "#52b788",
-  "Galbraith Gap"      = "#8d99ae"
-)
-
-SITE_TYPE_COLORS <- c("Surface" = "#e05c28", "Spring" = "#7b2fbe")
 
 LINE_COLORS <- c(
   "#1d7fb3", "#2a9d8f", "#e07040", "#c98b2d",
@@ -244,7 +243,7 @@ ui <- page_navbar(
       layout_columns(
         col_widths = c(4, 4, 4),
         value_box(
-          title    = "Monitoring Stations",
+          title    = "Temperature Monitoring Stations",
           value    = n_sites,
           theme    = value_box_theme(bg = "#1a3a5c", fg = "white"),
           showcase = icon("location-dot", style = "font-size:2rem;")
@@ -302,8 +301,9 @@ ui <- page_navbar(
         
         hr(style = "margin:.6rem 0;"),
         sidebar_head("Display"),
-        checkboxInput("ts_show_max", "Show daily maximum", value = TRUE),
-        checkboxInput("ts_smooth",   "Add smoothed trend", value = FALSE),
+        checkboxInput("ts_show_max",   "Show daily maximum",     value = TRUE),
+        checkboxInput("ts_show_flags", "Highlight flagged rows", value = FALSE),
+        checkboxInput("ts_smooth",     "Add smoothed trend",     value = FALSE),
         
         hr(style = "margin:.6rem 0;"),
         downloadButton("ts_dl", "Download filtered data",
@@ -339,14 +339,18 @@ ui <- page_navbar(
         
         hr(style = "margin:.6rem 0;"),
         sidebar_head("Reference Lines"),
-        checkboxInput("sp_trout",
-                      tags$span("PA trout stress threshold ",
-                                tags$small("(20°C / 68°F)")),
-                      value = TRUE),
+        checkboxInput("sp_groundwater",
+                      tags$span("Groundwater temperature ",
+                                tags$small("(~10.5°C)")),
+                      value = FALSE),
         checkboxInput("sp_coldwater",
                       tags$span("Cold-water fishery threshold ",
                                 tags$small("(17°C)")),
                       value = FALSE),
+        checkboxInput("sp_trout",
+                      tags$span("PA trout stress threshold ",
+                                tags$small("(20°C / 68°F)")),
+                      value = TRUE),
         
         hr(style = "margin:.6rem 0;"),
         p("Box = IQR · Line = median · Dots = outliers",
@@ -544,25 +548,14 @@ ui <- page_navbar(
         card_header("Columns Included"),
         
         card_body(
-          tags$p(
-            tags$strong("Station information: "),
-            "site ID, station name, site type, and watershed"
-          ),
-          
-          tags$p(
-            tags$strong("Date information: "),
-            "date, year, and month"
-          ),
-          
-          tags$p(
-            tags$strong("Temperature information: "),
-            "daily mean and daily maximum temperature in degrees Celsius"
-          ),
-          
-          tags$p(
-            tags$strong("Quality control: "),
-            "indicator showing whether the row was flagged during review"
-          )
+          tags$p(tags$strong("Station information: "),
+                 "site ID, station name, site type, and watershed"),
+          tags$p(tags$strong("Date information: "),
+                 "date, year, and month"),
+          tags$p(tags$strong("Temperature information: "),
+                 "daily mean and daily maximum temperature in degrees Celsius"),
+          tags$p(tags$strong("Quality control: "),
+                 "indicator showing whether the row was flagged during review")
         )
       )
     )
@@ -719,7 +712,7 @@ server <- function(input, output, session) {
         mode          = "lines",
         connectgaps   = FALSE,
         name          = "Daily mean",
-        line          = list(color = "#1d7fb3", width = 2.2),
+        line          = list(color = "#1d7fb3", width = 1.4),
         hovertemplate = "%{x|%b %d, %Y}<br>Mean: %{y:.1f} \u00b0C<extra></extra>"
       )
     
@@ -732,9 +725,25 @@ server <- function(input, output, session) {
         mode          = "lines",
         connectgaps   = FALSE,
         name          = "Daily max",
-        line          = list(color = "#e07040", width = 1.8),
+        line          = list(color = "#e07040", width = 1),
         hovertemplate = "%{x|%b %d, %Y}<br>Max: %{y:.1f} \u00b0C<extra></extra>"
       )
+    }
+    
+    if (isTRUE(input$ts_show_flags)) {
+      df <- d |> filter(qc_any_flag == TRUE, !is.na(daily_mean_c))
+      if (nrow(df) > 0) {
+        p <- p |> add_trace(
+          data   = df,
+          x      = ~date,
+          y      = ~daily_mean_c,
+          type   = "scatter",
+          mode   = "markers",
+          name   = "Flagged",
+          marker = list(color = "#e9c46a", size = 7, symbol = "circle-open",
+                        line = list(width = 2))
+        )
+      }
     }
     
     if (isTRUE(input$ts_smooth) && nrow(dc_smooth) > 60) {
@@ -747,36 +756,32 @@ server <- function(input, output, session) {
         type          = "scatter",
         mode          = "lines",
         name          = "Smoothed trend",
-        line          = list(color = "#1a3a5c", width = 3.4),
+        line          = list(color = "#1a3a5c", width = 2.5),
         hovertemplate = "%{x|%b %d, %Y}<br>Trend: %{y:.1f} \u00b0C<extra></extra>"
       )
     }
     
     p |> layout(
       xaxis = list(
-        title     = list(text = "", font = list(size = 19)),
-        tickfont  = list(size = 15),
-        showgrid  = FALSE
+        title    = list(text = "", font = list(size = 19)),
+        tickfont = list(size = 15),
+        showgrid = FALSE
       ),
       yaxis = list(
         title     = list(text = "Temperature (°C)", font = list(size = 19)),
         tickfont  = list(size = 15),
+        range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend = list(
-        orientation = "h", x = 0, y = 1.06,
-        font = list(size = 15)
-      ),
+      legend    = list(orientation = "h", x = 0, y = 1.06,
+                       font = list(size = 15)),
       hovermode     = "x unified",
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(
-        family = "system-ui, sans-serif",
-        size   = 16,
-        color  = "#1a2633"
-      ),
-      margin        = list(l = 70, r = 25, t = 20, b = 65)
+      font          = list(family = "system-ui, sans-serif", size = 16,
+                           color = "#1a2633"),
+      margin        = list(l = 55, r = 20, t = 15, b = 55)
     )
   })
   
@@ -818,8 +823,8 @@ server <- function(input, output, session) {
       y             = ~daily_mean_c,
       type          = "box",
       name          = "Daily mean temp",
-      marker        = list(color = "#1d7fb3", size = 4, opacity = 0.4),
-      line          = list(color = "#1a3a5c", width = 2),
+      marker        = list(color = "#1d7fb3", size = 3, opacity = 0.35),
+      line          = list(color = "#1a3a5c"),
       fillcolor     = "rgba(29, 127, 179, 0.22)",
       hovertemplate = paste0(
         "<b>%{x}</b><br>",
@@ -831,39 +836,37 @@ server <- function(input, output, session) {
     ref_shapes      <- list()
     ref_annotations <- list()
     
-    if (isTRUE(input$sp_trout)) {
-      # Shaded band above threshold
+    # Groundwater reference — band BELOW 10.5°C (anomalously cold zone)
+    if (isTRUE(input$sp_groundwater)) {
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type      = "rect", xref = "paper", x0 = 0, x1 = 1,
-        yref      = "y",    y0   = 20,      y1 = 35,
-        fillcolor = "rgba(214, 78, 60, 0.12)",
+        yref      = "y",    y0   = TEMP_YMIN, y1 = 10.5,
+        fillcolor = "rgba(43, 138, 155, 0.10)",
         line      = list(width = 0)
       )
-      # Solid line at threshold
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type = "line", xref = "paper", x0 = 0, x1 = 1,
-        yref = "y",    y0   = 20,      y1 = 20,
-        line = list(color = "#d64e3c", width = 3)
+        yref = "y",    y0   = 10.5,    y1 = 10.5,
+        line = list(color = "#2b8a9b", width = 3)
       )
       ref_annotations[[length(ref_annotations) + 1]] <- list(
-        xref      = "paper", x = 0.01, y = 20,
-        text      = "\u25b2 PA trout stress threshold (20\u00b0C)",
+        xref      = "paper", x = 0.01, y = 10.5,
+        text      = "\u25bc Groundwater temperature (~10.5\u00b0C)",
         showarrow = FALSE, xanchor = "left",
-        yanchor   = "bottom", yshift = 5,
-        font      = list(color = "#d64e3c", size = 14,
+        yanchor   = "top", yshift = -5,
+        font      = list(color = "#2b8a9b", size = 14,
                          family = "system-ui, sans-serif")
       )
     }
     
+    # Cold-water fishery threshold — band above 17°C
     if (isTRUE(input$sp_coldwater)) {
-      # Shaded band above threshold
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type      = "rect", xref = "paper", x0 = 0, x1 = 1,
-        yref      = "y",    y0   = 17,      y1 = 35,
+        yref      = "y",    y0   = 17,      y1 = TEMP_YMAX,
         fillcolor = "rgba(201, 139, 45, 0.10)",
         line      = list(width = 0)
       )
-      # Solid line at threshold
       ref_shapes[[length(ref_shapes) + 1]] <- list(
         type = "line", xref = "paper", x0 = 0, x1 = 1,
         yref = "y",    y0   = 17,      y1 = 17,
@@ -879,6 +882,29 @@ server <- function(input, output, session) {
       )
     }
     
+    # PA trout stress threshold — band above 20°C
+    if (isTRUE(input$sp_trout)) {
+      ref_shapes[[length(ref_shapes) + 1]] <- list(
+        type      = "rect", xref = "paper", x0 = 0, x1 = 1,
+        yref      = "y",    y0   = 20,      y1 = TEMP_YMAX,
+        fillcolor = "rgba(214, 78, 60, 0.12)",
+        line      = list(width = 0)
+      )
+      ref_shapes[[length(ref_shapes) + 1]] <- list(
+        type = "line", xref = "paper", x0 = 0, x1 = 1,
+        yref = "y",    y0   = 20,      y1 = 20,
+        line = list(color = "#d64e3c", width = 3)
+      )
+      ref_annotations[[length(ref_annotations) + 1]] <- list(
+        xref      = "paper", x = 0.01, y = 20,
+        text      = "\u25b2 PA trout stress threshold (20\u00b0C)",
+        showarrow = FALSE, xanchor = "left",
+        yanchor   = "bottom", yshift = 5,
+        font      = list(color = "#d64e3c", size = 14,
+                         family = "system-ui, sans-serif")
+      )
+    }
+    
     p |> layout(
       xaxis = list(
         title    = list(text = "Month", font = list(size = 19)),
@@ -889,24 +915,20 @@ server <- function(input, output, session) {
         title     = list(text = "Daily Mean Temperature (\u00b0C)",
                          font = list(size = 19)),
         tickfont  = list(size = 15),
+        range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend = list(
-        orientation = "h", x = 0, y = 1.06,
-        font = list(size = 15)
-      ),
+      legend = list(orientation = "h", x = 0, y = 1.06,
+                    font = list(size = 15)),
       showlegend    = TRUE,
       shapes        = if (length(ref_shapes) > 0) ref_shapes else NULL,
       annotations   = if (length(ref_annotations) > 0) ref_annotations else NULL,
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(
-        family = "system-ui, sans-serif",
-        size   = 16,
-        color  = "#1a2633"
-      ),
-      margin        = list(l = 75, r = 25, t = 20, b = 70)
+      font          = list(family = "system-ui, sans-serif", size = 16,
+                           color = "#1a2633"),
+      margin        = list(l = 55, r = 20, t = 15, b = 55)
     )
   })
   
@@ -949,8 +971,8 @@ server <- function(input, output, session) {
         type          = "scatter",
         mode          = "lines+markers",
         name          = sd$site_name[1],
-        line          = list(color = LINE_COLORS[i], width = 3),
-        marker        = list(color = LINE_COLORS[i], size = 9),
+        line          = list(color = LINE_COLORS[i], width = 2.2),
+        marker        = list(color = LINE_COLORS[i], size = 7),
         hovertemplate = paste0(
           "<b>", sd$site_name[1], "</b><br>",
           "%{x}: %{y:.1f} \u00b0C<extra></extra>"
@@ -970,21 +992,17 @@ server <- function(input, output, session) {
           font = list(size = 19)
         ),
         tickfont  = list(size = 15),
+        range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend = list(
-        orientation = "v", x = 1.01, y = 1, xanchor = "left",
-        font = list(size = 15)
-      ),
+      legend        = list(orientation = "v", x = 1.01, y = 1, xanchor = "left",
+                           font = list(size = 15)),
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(
-        family = "system-ui, sans-serif",
-        size   = 16,
-        color  = "#1a2633"
-      ),
-      margin        = list(l = 75, r = 25, t = 20, b = 70)
+      font          = list(family = "system-ui, sans-serif", size = 16,
+                           color = "#1a2633"),
+      margin        = list(l = 55, r = 20, t = 15, b = 55)
     )
   })
   
@@ -1041,10 +1059,8 @@ server <- function(input, output, session) {
         div(
           icon("triangle-exclamation"),
           tags$strong(" Select at least one station."),
-          tags$p(
-            "Or choose 'All monitoring stations.'",
-            style = "margin:.35rem 0 0; color:#5f7a90;"
-          )
+          tags$p("Or choose 'All monitoring stations.'",
+                 style = "margin:.35rem 0 0; color:#5f7a90;")
         )
       )
     }
@@ -1054,10 +1070,8 @@ server <- function(input, output, session) {
         div(
           icon("circle-exclamation"),
           tags$strong(" No matching data."),
-          tags$p(
-            "Try changing the station, year, or quality-control filters.",
-            style = "margin:.35rem 0 0; color:#5f7a90;"
-          )
+          tags$p("Try changing the station, year, or quality-control filters.",
+                 style = "margin:.35rem 0 0; color:#5f7a90;")
         )
       )
     }
@@ -1066,31 +1080,24 @@ server <- function(input, output, session) {
     date_max <- max(d$date, na.rm = TRUE)
     
     tagList(
-      tags$p(
-        style = "margin-bottom:.45rem;",
-        icon("location-dot"), " ",
-        tags$strong(n_distinct(d$site_id)),
-        if (n_distinct(d$site_id) == 1) " station" else " stations"
-      ),
-      tags$p(
-        style = "margin-bottom:.45rem;",
-        icon("calendar"), " ",
-        format(date_min, "%B %d, %Y"), " through ", format(date_max, "%B %d, %Y")
-      ),
-      tags$p(
-        style = "margin-bottom:.45rem;",
-        icon("table"), " ",
-        tags$strong(formatC(nrow(d), format = "d", big.mark = ",")), " rows"
-      ),
-      tags$p(
-        style = "margin-bottom:0;",
-        icon("shield-halved"), " ",
-        if (isTRUE(input$dl_include_flagged)) {
-          "Includes quality-control flagged rows"
-        } else {
-          "Quality-control flagged rows excluded"
-        }
-      )
+      tags$p(style = "margin-bottom:.45rem;",
+             icon("location-dot"), " ",
+             tags$strong(n_distinct(d$site_id)),
+             if (n_distinct(d$site_id) == 1) " station" else " stations"),
+      tags$p(style = "margin-bottom:.45rem;",
+             icon("calendar"), " ",
+             format(date_min, "%B %d, %Y"), " through ",
+             format(date_max, "%B %d, %Y")),
+      tags$p(style = "margin-bottom:.45rem;",
+             icon("table"), " ",
+             tags$strong(formatC(nrow(d), format = "d", big.mark = ",")), " rows"),
+      tags$p(style = "margin-bottom:0;",
+             icon("shield-halved"), " ",
+             if (isTRUE(input$dl_include_flagged)) {
+               "Includes quality-control flagged rows"
+             } else {
+               "Quality-control flagged rows excluded"
+             })
     )
   })
   
@@ -1108,11 +1115,9 @@ server <- function(input, output, session) {
       )
     }
     
-    downloadButton(
-      "dl_btn", "Download CSV",
-      icon = icon("download"),
-      class = "btn-primary w-100"
-    )
+    downloadButton("dl_btn", "Download CSV",
+                   icon = icon("download"),
+                   class = "btn-primary w-100")
   })
   
   observeEvent(input$dl_reset, {
