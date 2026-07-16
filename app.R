@@ -124,7 +124,7 @@ mini_map <- function(selected_ids, site_meta, colors = NULL) {
       margin        = list(l = 0, r = 0, t = 0, b = 0),
       paper_bgcolor = "transparent"
     ) |>
-    config(displayModeBar = FALSE)
+    config(displayModeBar = FALSE, responsive = TRUE, scrollZoom = FALSE)
 }
 
 # Summary stats for overview boxes
@@ -213,76 +213,210 @@ sidebar_head <- function(label) {
 ui <- page_navbar(
   theme        = kwrc_theme,
   window_title = "KWRC Temperature Explorer",
+  navbar_options = navbar_options(collapsible = TRUE, theme = "dark"),
   
   # Mobile viewport meta tag
   header = tags$head(
     tags$meta(name = "viewport",
               content = "width=device-width, initial-scale=1, shrink-to-fit=no"),
     tags$style(HTML("
-      /* ── Mobile-first overrides ── */
+      /* ── Responsive/mobile overrides ─────────────────────────────── */
 
-      /* Plots: use vh on desktop, fixed px floor on mobile so they're usable */
-      .ts-plot-wrap  { height: calc(100vh - 210px); min-height: 320px; }
-      .sp-plot-wrap  { height: calc(100vh - 210px); min-height: 320px; }
-      .cmp-plot-wrap { height: calc(100vh - 175px); min-height: 300px; }
+      html, body {
+        max-width: 100%;
+        overflow-x: hidden;
+      }
 
-      /* Mini-maps: smaller on mobile */
-      .mini-map-wrap { height: 185px; }
+      /* Let Plotly and bslib children shrink inside flex/grid layouts. */
+      .card,
+      .bslib-sidebar-layout,
+      .bslib-sidebar-layout > .main,
+      .cmp-main {
+        min-width: 0;
+      }
 
-      /* Overview map: shorter on mobile */
+      /* Plot heights use modern viewport units but retain safe floors. */
+      .ts-plot-wrap,
+      .sp-plot-wrap {
+        height: calc(100dvh - 210px);
+        min-height: 420px;
+      }
+      .cmp-plot-wrap {
+        height: calc(100dvh - 175px);
+        min-height: 400px;
+      }
+      .mini-map-wrap     { height: 185px; }
       .overview-map-wrap { height: 420px; }
 
-      /* Compare Sites: full-width stack on mobile, 3-col on desktop */
+      /* Compare Sites: controls, station picker, then plot on phones. */
       .cmp-layout {
         display: flex;
         flex-direction: column;
         gap: .75rem;
         padding: .75rem;
-        min-height: calc(100vh - 75px);
       }
-      .cmp-controls { order: 2; }
-      .cmp-main     { order: 1; }
-      .cmp-sites    { order: 3; }
+      .cmp-controls { order: 1; }
+      .cmp-sites    { order: 2; }
+      .cmp-main     { order: 3; }
+
+      /* Keep all comparison choices visible without making the phone page endless. */
+      .cmp-site-options {
+        max-height: 300px;
+        overflow-y: auto;
+        padding-right: .25rem;
+        scrollbar-gutter: stable;
+      }
+      .cmp-site-options .form-check {
+        margin-bottom: .2rem;
+      }
+
+      /* Download tab: one column by default. */
+      .dl-cols {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      /* Value boxes wrap gracefully. */
+      .vb-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .75rem;
+        margin-bottom: 1rem;
+      }
+      .vb-row > * {
+        flex: 1 1 200px;
+        min-width: 0;
+      }
+
+      /* Short brand is shown only on narrow screens. */
+      .brand-short { display: none; }
+
+      /* Larger slider handles and comfortable touch targets. */
+      .irs--shiny .irs-handle {
+        width: 30px;
+        height: 30px;
+        top: 20px;
+      }
+
+      @media (max-width: 767.98px) {
+        .navbar-brand {
+          max-width: calc(100vw - 78px);
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+        .brand-full  { display: none; }
+        .brand-short { display: inline; }
+
+        .navbar-nav .nav-link {
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+        }
+
+        .overview-page {
+          padding: .9rem .65rem !important;
+        }
+        .overview-page h2 {
+          font-size: 1.55rem;
+          line-height: 1.15;
+        }
+        .overview-page > div:first-child p {
+          font-size: .95rem !important;
+        }
+
+        .ts-plot-wrap,
+        .sp-plot-wrap,
+        .cmp-plot-wrap {
+          height: clamp(360px, 58svh, 520px);
+          min-height: 360px;
+        }
+        .mini-map-wrap     { height: 135px; }
+        .overview-map-wrap { height: 340px; }
+
+        .cmp-layout {
+          padding: .5rem;
+          gap: .6rem;
+        }
+        .cmp-controls .mini-map-wrap {
+          height: 120px;
+        }
+        .cmp-site-options {
+          max-height: 260px;
+          border: 1px solid #d5e3ec;
+          border-radius: .4rem;
+          background: rgba(255,255,255,.55);
+          padding: .35rem .45rem;
+        }
+
+        .card-header {
+          padding: .65rem .75rem;
+          font-size: .95rem;
+          line-height: 1.2;
+        }
+        .card-body {
+          padding: .75rem;
+        }
+
+        /* 16px prevents iOS from zooming when an input receives focus. */
+        .form-control,
+        .form-select,
+        .selectize-input,
+        .selectize-dropdown,
+        select,
+        input[type='text'] {
+          font-size: 16px !important;
+        }
+
+        .btn,
+        .download-button,
+        .action-button {
+          min-height: 44px;
+        }
+
+        .checkbox label,
+        .radio label {
+          min-height: 42px;
+          display: flex;
+          align-items: center;
+          line-height: 1.2;
+        }
+
+        .vb-row > * {
+          flex-basis: 100%;
+        }
+
+        .dataTables_wrapper {
+          font-size: .86rem;
+        }
+        table.dataTable td,
+        table.dataTable th {
+          padding: .55rem .45rem !important;
+        }
+      }
 
       @media (min-width: 768px) {
         .cmp-layout {
           flex-direction: row;
           align-items: stretch;
+          min-height: calc(100dvh - 75px);
         }
         .cmp-controls { order: 1; flex: 0 0 22%; }
         .cmp-main     { order: 2; flex: 1 1 auto; }
         .cmp-sites    { order: 3; flex: 0 0 22%; }
 
-        /* Restore full-height plots on desktop */
-        .ts-plot-wrap  { height: calc(100vh - 210px); }
-        .sp-plot-wrap  { height: calc(100vh - 210px); }
-        .cmp-plot-wrap { height: calc(100vh - 175px); }
-        .overview-map-wrap { height: 420px; }
-      }
-
-      /* Slider touch targets */
-      .irs--shiny .irs-handle { width: 28px; height: 28px; top: 21px; }
-
-      /* Download tab: single column on mobile */
-      .dl-cols { display: flex; flex-direction: column; gap: 1rem; }
-      @media (min-width: 768px) {
         .dl-cols { flex-direction: row; }
         .dl-cols > div:first-child { flex: 0 0 58%; }
         .dl-cols > div:last-child  { flex: 1 1 auto; }
       }
-
-      /* Value boxes: wrap gracefully */
-      .vb-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; }
-      .vb-row > * { flex: 1 1 200px; min-width: 0; }
-
-      /* Navbar title: truncate gracefully */
-      .navbar-brand span { font-size: clamp(.8rem, 2.5vw, 1.05rem); }
     "))
   ),
   
   title = tags$span(
     style = "font-family:Georgia,serif; font-size:1.05rem; letter-spacing:.01em;",
-    "KWRC Water Temperature Explorer"
+    tags$span(class = "brand-full",  "KWRC Water Temperature Explorer"),
+    tags$span(class = "brand-short", "KWRC Temperature")
   ),
   
   # ── (a) Overview ───────────────────────────────────────────────────────────
@@ -291,6 +425,7 @@ ui <- page_navbar(
     icon = icon("gauge"),
     
     div(
+      class = "overview-page",
       style = "max-width:1200px; margin:0 auto; padding:1.5rem 1rem;",
       
       div(
@@ -330,7 +465,10 @@ ui <- page_navbar(
       ),
       
       layout_columns(
-        col_widths = c(12, 12),          # stack on mobile; override below
+        col_widths = breakpoints(
+          xs = c(12, 12),
+          md = c(7, 5)
+        ),
         style = "margin-top:1rem;",
         
         card(
@@ -344,13 +482,7 @@ ui <- page_navbar(
           style = "overflow-y:auto;",
           DTOutput("overview_table")
         )
-      ) |>
-        # Apply 7/5 split only on md+ via inline style override
-        tagAppendAttributes(
-          style = "@media (min-width:768px){
-            grid-template-columns: 7fr 5fr !important;
-          }"
-        )
+      )
     )
   ),
   
@@ -362,6 +494,7 @@ ui <- page_navbar(
     layout_sidebar(
       sidebar = sidebar(
         width = SB_W, bg = SB_BG,
+        open = "desktop", resizable = FALSE,
         
         sidebar_head("Station"),
         selectInput("ts_site", NULL, choices = SITE_CHOICES, selected = "SPA"),
@@ -402,6 +535,7 @@ ui <- page_navbar(
     layout_sidebar(
       sidebar = sidebar(
         width = SB_W, bg = SB_BG,
+        open = "desktop", resizable = FALSE,
         
         sidebar_head("Station"),
         selectInput("sp_site", NULL, choices = SITE_CHOICES, selected = "SPA"),
@@ -494,18 +628,21 @@ ui <- page_navbar(
         )
       ),
       
-      # Site checkboxes
+      # Visible station checklist — retained on both desktop and mobile
       div(
         class = "cmp-sites",
         card(
-          style = paste0("background:", SB_BG, "; overflow-y:auto; height:100%;"),
+          style = paste0("background:", SB_BG, "; height:100%;"),
           card_body(
             padding = "0.75rem",
             sidebar_head("Select Stations (up to 8)"),
-            checkboxGroupInput(
-              "cmp_sites", NULL,
-              choices  = CMP_CHOICES,
-              selected = c("SPA", "SPM", "SLU", "CEL")
+            div(
+              class = "cmp-site-options",
+              checkboxGroupInput(
+                "cmp_sites", NULL,
+                choices  = CMP_CHOICES,
+                selected = c("SPA", "SPM", "SLU", "CEL")
+              )
             )
           )
         )
@@ -698,7 +835,8 @@ server <- function(input, output, session) {
         legend  = list(orientation = "h", x = 0, y = 0,
                        bgcolor = "rgba(255,255,255,0.8)"),
         margin  = list(l = 0, r = 0, t = 0, b = 0)
-      )
+      ) |>
+      config(displayModeBar = FALSE, responsive = TRUE, scrollZoom = FALSE)
   })
   
   # ── Overview table ───────────────────────────────────────────────────────
@@ -718,15 +856,21 @@ server <- function(input, output, session) {
     
     datatable(
       summ,
-      rownames = FALSE,
-      options  = list(
-        pageLength = 15,
-        scrollY    = "340px",
-        scrollX    = TRUE,
-        dom        = "t",
-        ordering   = TRUE
+      rownames   = FALSE,
+      extensions = "Responsive",
+      options = list(
+        pageLength = 10,
+        responsive = TRUE,
+        autoWidth  = FALSE,
+        dom        = "tip",
+        ordering   = TRUE,
+        columnDefs = list(
+          list(responsivePriority = 1, targets = 0),
+          list(responsivePriority = 2, targets = 1),
+          list(responsivePriority = 3, targets = 3:4)
+        )
       ),
-      class = "compact stripe"
+      class = "compact stripe nowrap"
     )
   })
   
@@ -770,7 +914,28 @@ server <- function(input, output, session) {
     mini_map(sites, site_meta, colors = LINE_COLORS[seq_along(sites)])
   })
   
+  # Keep the comparison readable by enforcing the stated eight-station limit.
+  observeEvent(input$cmp_sites, {
+    selected <- input$cmp_sites
+    if (!is.null(selected) && length(selected) > 8) {
+      keep <- head(selected, 8)
+      updateCheckboxGroupInput(session, "cmp_sites", selected = keep)
+      showNotification(
+        "Compare Sites is limited to eight stations at a time.",
+        type = "message",
+        duration = 4
+      )
+    }
+  }, ignoreInit = TRUE)
+  
   output$ts_plot <- renderPlotly({
+    plot_width <- session$clientData$output_ts_plot_width
+    mobile <- isTRUE(!is.null(plot_width) && !is.na(plot_width) && plot_width < 600)
+    axis_title_size <- if (mobile) 14 else 19
+    tick_size       <- if (mobile) 11 else 15
+    legend_size     <- if (mobile) 11 else 15
+    base_size       <- if (mobile) 12 else 16
+    
     d <- ts_filtered()
     validate(need(sum(!is.na(d$daily_mean_c)) > 0,
                   "No data for the selected station and year range."))
@@ -837,27 +1002,35 @@ server <- function(input, output, session) {
     
     p |> layout(
       xaxis = list(
-        title    = list(text = "", font = list(size = 19)),
-        tickfont = list(size = 15),
-        showgrid = FALSE
+        title    = list(text = "", font = list(size = axis_title_size)),
+        tickfont = list(size = tick_size),
+        showgrid = FALSE,
+        rangeslider = list(visible = FALSE)
       ),
       yaxis = list(
-        title     = list(text = "Temperature (°C)", font = list(size = 19)),
-        tickfont  = list(size = 15),
+        title     = list(text = "Temperature (°C)", font = list(size = axis_title_size)),
+        tickfont  = list(size = tick_size),
         range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend    = list(orientation = "h", x = 0, y = 1.06,
-                       font = list(size = 15)),
+      legend = if (mobile) {
+        list(orientation = "h", x = 0, y = -0.18, font = list(size = legend_size))
+      } else {
+        list(orientation = "h", x = 0, y = 1.06, font = list(size = legend_size))
+      },
       hovermode     = "x unified",
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(family = "system-ui, sans-serif", size = 16,
+      font          = list(family = "system-ui, sans-serif", size = base_size,
                            color = "#1a2633"),
-      margin        = list(l = 55, r = 20, t = 15, b = 55)
+      margin = if (mobile) {
+        list(l = 48, r = 8, t = 8, b = 88)
+      } else {
+        list(l = 55, r = 20, t = 15, b = 55)
+      }
     ) |>
-      config(displayModeBar = FALSE)
+      config(displayModeBar = FALSE, responsive = TRUE)
   })
   
   output$ts_dl <- downloadHandler(
@@ -889,6 +1062,13 @@ server <- function(input, output, session) {
   })
   
   output$sp_plot <- renderPlotly({
+    plot_width <- session$clientData$output_sp_plot_width
+    mobile <- isTRUE(!is.null(plot_width) && !is.na(plot_width) && plot_width < 600)
+    axis_title_size <- if (mobile) 14 else 19
+    tick_size       <- if (mobile) 10 else 15
+    base_size       <- if (mobile) 12 else 16
+    note_size       <- if (mobile) 10 else 14
+    
     d <- sp_filtered()
     validate(need(nrow(d) > 0, "No data for the selected station and year range."))
     
@@ -928,7 +1108,7 @@ server <- function(input, output, session) {
         text      = "\u25bc Groundwater temperature (~10.5\u00b0C)",
         showarrow = FALSE, xanchor = "left",
         yanchor   = "top", yshift = -5,
-        font      = list(color = "#2b8a9b", size = 14,
+        font      = list(color = "#2b8a9b", size = note_size,
                          family = "system-ui, sans-serif")
       )
     }
@@ -950,7 +1130,7 @@ server <- function(input, output, session) {
         text      = "\u25b2 Cold-water fishery threshold (17\u00b0C)",
         showarrow = FALSE, xanchor = "left",
         yanchor   = "bottom", yshift = 5,
-        font      = list(color = "#c98b2d", size = 14,
+        font      = list(color = "#c98b2d", size = note_size,
                          family = "system-ui, sans-serif")
       )
     }
@@ -972,37 +1152,40 @@ server <- function(input, output, session) {
         text      = "\u25b2 PA trout stress threshold (20\u00b0C)",
         showarrow = FALSE, xanchor = "left",
         yanchor   = "bottom", yshift = 5,
-        font      = list(color = "#d64e3c", size = 14,
+        font      = list(color = "#d64e3c", size = note_size,
                          family = "system-ui, sans-serif")
       )
     }
     
     p |> layout(
       xaxis = list(
-        title    = list(text = "Month", font = list(size = 19)),
-        tickfont = list(size = 15),
-        showgrid = FALSE
+        title     = list(text = "Month", font = list(size = axis_title_size)),
+        tickfont  = list(size = tick_size),
+        tickangle = if (mobile) -45 else 0,
+        showgrid  = FALSE
       ),
       yaxis = list(
         title     = list(text = "Daily Mean Temperature (\u00b0C)",
-                         font = list(size = 19)),
-        tickfont  = list(size = 15),
+                         font = list(size = axis_title_size)),
+        tickfont  = list(size = tick_size),
         range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend = list(orientation = "h", x = 0, y = 1.06,
-                    font = list(size = 15)),
-      showlegend    = TRUE,
+      showlegend    = FALSE,
       shapes        = if (length(ref_shapes) > 0) ref_shapes else NULL,
       annotations   = if (length(ref_annotations) > 0) ref_annotations else NULL,
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(family = "system-ui, sans-serif", size = 16,
+      font          = list(family = "system-ui, sans-serif", size = base_size,
                            color = "#1a2633"),
-      margin        = list(l = 55, r = 20, t = 15, b = 55)
+      margin = if (mobile) {
+        list(l = 48, r = 8, t = 12, b = 74)
+      } else {
+        list(l = 55, r = 20, t = 15, b = 55)
+      }
     ) |>
-      config(displayModeBar = FALSE)
+      config(displayModeBar = FALSE, responsive = TRUE)
   })
   
   # ── Compare Sites ─────────────────────────────────────────────────────────
@@ -1019,6 +1202,13 @@ server <- function(input, output, session) {
   })
   
   output$cmp_plot <- renderPlotly({
+    plot_width <- session$clientData$output_cmp_plot_width
+    mobile <- isTRUE(!is.null(plot_width) && !is.na(plot_width) && plot_width < 600)
+    axis_title_size <- if (mobile) 14 else 19
+    tick_size       <- if (mobile) 10 else 15
+    legend_size     <- if (mobile) 10 else 15
+    base_size       <- if (mobile) 12 else 16
+    
     d <- cmp_filtered()
     validate(need(nrow(d) > 0, "No data for the selected stations and year range."))
     
@@ -1043,7 +1233,7 @@ server <- function(input, output, session) {
         y             = ~med,
         type          = "scatter",
         mode          = "lines+markers",
-        name          = sd$site_name[1],
+        name          = if (mobile) s else sd$site_name[1],
         line          = list(color = LINE_COLORS[i], width = 2.2),
         marker        = list(color = LINE_COLORS[i], size = 7),
         hovertemplate = paste0(
@@ -1055,29 +1245,38 @@ server <- function(input, output, session) {
     
     p |> layout(
       xaxis = list(
-        title    = list(text = "Month", font = list(size = 19)),
-        tickfont = list(size = 15),
-        showgrid = FALSE
+        title     = list(text = "Month", font = list(size = axis_title_size)),
+        tickfont  = list(size = tick_size),
+        tickangle = if (mobile) -45 else 0,
+        showgrid  = FALSE
       ),
       yaxis = list(
         title = list(
           text = paste0(metric_lbl, " temperature (\u00b0C)"),
-          font = list(size = 19)
+          font = list(size = axis_title_size)
         ),
-        tickfont  = list(size = 15),
+        tickfont  = list(size = tick_size),
         range     = c(TEMP_YMIN, TEMP_YMAX),
         gridcolor = "#e8ecf0",
         zeroline  = FALSE
       ),
-      legend        = list(orientation = "v", x = 1.01, y = 1, xanchor = "left",
-                           font = list(size = 15)),
+      legend = if (mobile) {
+        list(orientation = "h", x = 0, y = -0.24, font = list(size = legend_size))
+      } else {
+        list(orientation = "v", x = 1.01, y = 1, xanchor = "left",
+             font = list(size = legend_size))
+      },
       plot_bgcolor  = "white",
       paper_bgcolor = "white",
-      font          = list(family = "system-ui, sans-serif", size = 16,
+      font          = list(family = "system-ui, sans-serif", size = base_size,
                            color = "#1a2633"),
-      margin        = list(l = 55, r = 20, t = 15, b = 55)
+      margin = if (mobile) {
+        list(l = 48, r = 8, t = 10, b = 112)
+      } else {
+        list(l = 55, r = 175, t = 15, b = 55)
+      }
     ) |>
-      config(displayModeBar = FALSE)
+      config(displayModeBar = FALSE, responsive = TRUE)
   })
   
   # ── Download ───────────────────────────────────────────────────────────────
